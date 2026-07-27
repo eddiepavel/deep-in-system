@@ -1,0 +1,69 @@
+---
+# =============================================================================
+# Firewall Role
+# =============================================================================
+# Configures UFW (Uncomplicated Firewall):
+#   - Deny all incoming by default
+#   - Allow outgoing by default
+#   - Open only: SSH (2222), HTTP (80), FTP (21)
+#
+# Justification for open ports:
+#   - 2222/tcp: SSH (remote management)
+#   - 80/tcp:   HTTP (WordPress website)
+#   - 21/tcp:   FTP (backup file access)
+# =============================================================================
+
+# --- Install UFW ---
+- name: Install UFW
+  apt:
+    name: ufw
+    state: present
+    update_cache: yes
+
+# --- Set default policies ---
+- name: Set default deny incoming
+  ufw:
+    direction: incoming
+    policy: deny
+
+- name: Set default allow outgoing
+  ufw:
+    direction: outgoing
+    policy: allow
+
+# --- Open required ports ---
+- name: Allow SSH on port 2222
+  ufw:
+    rule: allow
+    port: '2222'
+    proto: tcp
+    comment: 'SSH remote management'
+
+- name: Allow HTTP on port 80
+  ufw:
+    rule: allow
+    port: '80'
+    proto: tcp
+    comment: 'HTTP for WordPress website'
+
+- name: Allow FTP on port 21
+  ufw:
+    rule: allow
+    port: '21'
+    proto: tcp
+    comment: 'FTP for backup file access'
+
+# --- Enable UFW ---
+- name: Enable UFW
+  ufw:
+    state: enabled
+
+# --- Verify ---
+- name: Display UFW status
+  command: "ufw status verbose"
+  register: ufw_status
+  changed_when: false
+
+- name: Show firewall rules
+  debug:
+    msg: "{{ ufw_status.stdout_lines }}"

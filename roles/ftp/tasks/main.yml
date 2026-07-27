@@ -1,0 +1,133 @@
+---
+# =============================================================================
+# FTP Role
+# =============================================================================
+# Sets up vsftpd:
+#   - User "nami" with read-only access to /backup only
+#   - No anonymous access
+#   - User is chrooted to /backup
+#
+# Usage: nami connects via FTP, can only see and download files in /backup
+# =============================================================================
+
+# --- Install vsftpd ---
+- name: Install vsftpd
+  apt:
+    name: vsftpd
+    state: present
+    update_cache: yes
+
+# --- Create nami user ---
+- name: Create nami user
+  user:
+    name: nami
+    shell: /bin/bash
+    home: /backup
+    create_home: no
+    password: "{{ nami_password | password_hash('sha512') }}"
+    state: present
+
+# --- Prepare /backup directory ---
+- name: Ensure /backup directory exists
+  file:
+    path: /backup
+    state: directory
+    owner: nami
+    group: nami
+    mode: '0755'
+
+# --- Configure vsftpd ---
+- name: Backup original vsftpd.conf
+  copy:
+    src: /etc/vsftpd.conf
+    dest: /etc/vsftpd.conf.backup
+    remote_src: yes
+    force: no
+
+- name: Configure vsftpd — disable anonymous
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^anonymous_enable'
+    line: 'anonymous_enable=NO'
+
+- name: Configure vsftpd — enable local user
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^local_enable'
+    line: 'local_enable=YES'
+
+- name: Configure vsftpd — enable write (needed for directory listing)
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^write_enable'
+    line: 'write_enable=NO'
+
+- name: Configure vsftpd — chroot local user
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^chroot_local_user'
+    line: 'chroot_local_user=YES'
+
+- name: Configure vsftpd — allow chroot for writable dirs
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^allow_writeable_chroot'
+    line: 'allow_writeable_chroot=YES'
+
+- name: Configure vsftpd — set passive mode ports
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^pasv_min_port'
+    line: 'pasv_min_port=30000'
+
+- name: Configure vsftpd — set passive mode max port
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^pasv_max_port'
+    line: 'pasv_max_port=30100'
+
+- name: Configure vsftpd — restrict to /backup via userlist
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^userlist_enable'
+    line: 'userlist_enable=YES'
+
+- name: Configure vsftpd — userlist file
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^userlist_file'
+    line: 'userlist_file=/etc/vsftpd.userlist'
+
+- name: Configure vsftpd — deny not in list
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^userlist_deny'
+    line: 'userlist_deny=NO'
+
+# --- Create userlist with only nami ---
+- name: Create vsftpd userlist
+  lineinfile:
+    path: /etc/vsftpd.userlist
+    line: nami
+    create: yes
+    mode: '0644'
+
+# --- Restart vsftpd ---
+- name: Restart vsftpd service
+  service:
+    name: vsftpd
+    state: restarted
+    enabled: yes
+
+# --- Verify ---
+- name: Check vsftpd is listening
+  shell: "ss -tlnp | grep :21"
+  register: ftp_listen
+  changed_when: false
+
+- name: Display FTP status
+  debug:
+    msg:
+      - "vsftpd is listening on port 21"
+      - "User: nami (read-only /backup)"
+      - "Anonymous: DISABLED"

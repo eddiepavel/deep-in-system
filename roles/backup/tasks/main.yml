@@ -1,0 +1,111 @@
+---
+# =============================================================================
+# Backup Role
+# =============================================================================
+# Sets up automated backups:
+#   - Cron job runs daily at 00:00
+#   - Dumps WordPress database
+#   - Creates tarball with date in filename
+#   - Saves to /backup
+#   - Logs success message to /var/log/backup.log
+#
+# Backup files are accessible via FTP (nami user)
+# =============================================================================
+
+# --- Install required packages ---
+- name: Install cron and tar
+  apt:
+    name:
+      - cron
+      - tar
+    state: present
+
+- name: Ensure cron service is running
+  service:
+    name: cron
+    state: started
+    enabled: yes
+
+# --- Create backup directory ---
+- name: Ensure /backup directory exists
+  file:
+    path: /backup
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+# --- Create backup script ---
+- name: Create backup script
+  copy:
+    dest: /usr/local/bin/backup-wordpress.sh
+    owner: root
+    group: root
+    mode: '0750'
+    content: |
+      #!/bin/bash
+      # =============================================================================
+      # WordPress Database Backup Script
+      # =============================================================================
+      # Dumps the WordPress database and creates a tarball in /backup
+      # Logs the result to /var/log/backup.log
+      # =============================================================================
+
+      set -euo pipefail
+
+      # --- Configuration ---
+      DB_NAME="{{ wordpress_db_name }}"
+      DB_USER="{{ wordpress_db_user }}"
+      DB_PASS="{{ mysql_wordpress_password }}"
+      BACKUP_DIR="/backup"
+      LOG_FILE="/var/log/backup.log"
+      DATE=$(date +"%Y-%m-%d_%H-%M-%S")
+
+      # --- Create temp dump file ---
+      DUMP_FILE="/tmp/wp_dump_${DATE}.sql"
+      BACKUP_FILE="${BACKUP_DIR}/wordpress_backup_${DATE}.tar.gz"
+
+      # --- Dump database ---
+      mysqldump -u "${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" > "${DUMP_FILE}"
+
+      # --- Create tarball ---
+      tar -czf "${BACKUP_FILE}" -C /tmp "wp_dump_${DATE}.sql"
+
+      # --- Clean up temp file ---
+      rm -f "${DUMP_FILE}"
+
+      # --- Log success ---
+      echo "wordpress backup created!, date: $(date)" >> "${LOG_FILE}"
+
+      echo "Backup completed: ${BACKUP_FILE}"
+
+# --- Set cron job: daily at 00:00 ---
+- name: Add backup cron job
+  cron:
+    name: "WordPress daily backup"
+    minute: "0"
+    hour: "0"
+    day: "*"
+    month: "*"
+    weekday: "*"
+    job: "/usr/local/bin/backup-wordpress.sh"
+    user: root
+
+# --- Verify cron ---
+- name: Verify cron job is installed
+  command: "crontab -l"
+  register: cron_list
+  changed_when: false
+
+- name: Display cron jobs
+  debug:
+    msg: "{{ cron_list.stdout_lines }}"
+
+- name: Backup setup complete
+  debug:
+    msg:
+      - "Cron job: Daily at 00:00"
+      - "Script: /usr/local/bin/backup-wordpress.sh"
+      - "Output: /backup/wordpress_backup_YYYY-MM-DD.tar.gz"
+      - "Log: /var/log/backup.log"
+      - "FTP access: login as 'nami' to download backups"

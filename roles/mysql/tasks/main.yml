@@ -1,0 +1,43 @@
+---
+# =============================================================================
+# MySQL Role — shell-based (avoids mysql_user module bugs with MySQL 8.4+)
+# =============================================================================
+# Installs and secures MySQL:
+#   - Install MySQL server with PyMySQL
+#   - Disable remote root login
+#   - Create wordpress database and user
+#   - All operations via shell (compatible with caching_sha2_password)
+# =============================================================================
+
+- name: Install MySQL server and pymysql
+  apt:
+    name:
+      - mysql-server
+      - python3-pymysql
+    state: present
+    update_cache: yes
+
+- name: Ensure MySQL is running
+  service:
+    name: mysql
+    state: started
+    enabled: yes
+
+- name: Remove anonymous MySQL users
+  shell: mysql -u root -p'{{ mysql_root_password }}' -e "DROP USER IF EXISTS ''@'localhost'; DROP USER IF EXISTS ''@'{{ ansible_hostname }}';"
+
+- name: Remove test database
+  shell: mysql -u root -p'{{ mysql_root_password }}' -e "DROP DATABASE IF EXISTS test;"
+
+- name: Disable remote root login
+  shell: mysql -u root -p'{{ mysql_root_password }}' -e "DROP USER IF EXISTS 'root'@'%';"
+
+- name: Create WordPress database
+  shell: mysql -u root -p'{{ mysql_root_password }}' -e "CREATE DATABASE IF NOT EXISTS {{ wordpress_db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+- name: Create WordPress MySQL user
+  shell: mysql -u root -p'{{ mysql_root_password }}' -e "CREATE USER IF NOT EXISTS '{{ wordpress_db_user }}'@'localhost' IDENTIFIED WITH caching_sha2_password BY '{{ mysql_wordpress_password }}'; GRANT ALL PRIVILEGES ON {{ wordpress_db_name }}.* TO '{{ wordpress_db_user }}'@'localhost'; FLUSH PRIVILEGES;"
+
+- name: MySQL setup complete
+  debug:
+    msg: "Database: {{ wordpress_db_name }} | User: {{ wordpress_db_user }} | Root remote: DISABLED"

@@ -1,0 +1,151 @@
+---
+# =============================================================================
+# WordPress Role
+# =============================================================================
+# Installs WordPress on Apache:
+#   - Install Apache + PHP + PHP-MySQL
+#   - Download WordPress
+#   - Configure wp-config.php
+#   - Protect config file from public access
+#
+# WordPress will be accessible at: http://{{ student_username }}-host/
+# =============================================================================
+
+# --- Install LAMP stack ---
+- name: Install Apache web server
+  apt:
+    name:
+      - apache2
+      - libapache2-mod-php
+    state: present
+    update_cache: yes
+
+- name: Install PHP and required extensions
+  apt:
+    name:
+      - php
+      - php-mysql
+      - php-cli
+      - php-curl
+      - php-gd
+      - php-mbstring
+      - php-xml
+      - php-zip
+    state: present
+
+- name: Ensure Apache is running
+  service:
+    name: apache2
+    state: started
+    enabled: yes
+
+# --- Download WordPress ---
+- name: Download WordPress
+  unarchive:
+    src: https://wordpress.org/latest.tar.gz
+    dest: /var/www/html/
+    remote_src: yes
+    creates: /var/www/html/wp-config-sample.php
+
+- name: Set WordPress directory permissions
+  file:
+    path: /var/www/html/wordpress
+    owner: www-data
+    group: www-data
+    recurse: yes
+    state: directory
+
+# --- Configure wp-config.php ---
+- name: Copy sample config
+  copy:
+    src: /var/www/html/wordpress/wp-config-sample.php
+    dest: /var/www/html/wordpress/wp-config.php
+    remote_src: yes
+    owner: www-data
+    group: www-data
+    mode: '0640'
+
+- name: Set database name in wp-config.php
+  lineinfile:
+    path: /var/www/html/wordpress/wp-config.php
+    regexp: "define\\( 'DB_NAME'.*"
+    line: "define( 'DB_NAME', '{{ wordpress_db_name }}' );"
+
+- name: Set database user in wp-config.php
+  lineinfile:
+    path: /var/www/html/wordpress/wp-config.php
+    regexp: "define\\( 'DB_USER'.*"
+    line: "define( 'DB_USER', '{{ wordpress_db_user }}' );"
+
+- name: Set database password in wp-config.php
+  lineinfile:
+    path: /var/www/html/wordpress/wp-config.php
+    regexp: "define\\( 'DB_PASSWORD'.*"
+    line: "define( 'DB_PASSWORD', '{{ mysql_wordpress_password }}' );"
+
+- name: Set database host in wp-config.php
+  lineinfile:
+    path: /var/www/html/wordpress/wp-config.php
+    regexp: "define\\( 'DB_HOST'.*"
+    line: "define( 'DB_HOST', 'localhost' );"
+
+# --- Generate WordPress security keys ---
+- name: Get WordPress salt keys
+  uri:
+    url: "https://api.wordpress.org/secret-key/1.1/salt/"
+    return_content: yes
+  register: wp_salts
+  ignore_errors: yes
+
+- name: Remove default salt keys from wp-config
+  lineinfile:
+    path: /var/www/html/wordpress/wp-config.php
+    regexp: "{{ item }}"
+    state: absent
+  loop:
+    - "define\\( 'AUTH_KEY'"
+    - "define\\( 'SECURE_AUTH_KEY'"
+    - "define\\( 'LOGGED_IN_KEY'"
+    - "define\\( 'NONCE_KEY'"
+    - "define\\( 'AUTH_SALT'"
+    - "define\\( 'SECURE_AUTH_SALT'"
+    - "define\\( 'LOGGED_IN_SALT'"
+    - "define\\( 'NONCE_SALT'"
+  when: wp_salts is succeeded
+
+- name: Add fresh salt keys
+  blockinfile:
+    path: /var/www/html/wordpress/wp-config.php
+    insertbefore: "That's all, stop editing"
+    marker: "/* {mark} SECURITY KEYS */"
+    block: "{{ wp_salts.content }}"
+  when: wp_salts is succeeded
+
+# --- Set file ownership ---
+- name: Set WordPress file ownership
+  file:
+    path: /var/www/html/wordpress
+    owner: www-data
+    group: www-data
+    recurse: yes
+
+# --- Protect wp-config.php from public access ---
+- name: Block access to wp-config.php via Apache
+  lineinfile:
+    path: /etc/apache2/sites-available/000-default.conf
+    insertbefore: '</VirtualHost>'
+    line: |
+      <Files wp-config.php>
+        Require all denied
+      </Files>
+  notify: restart apache
+
+- name: Enable AllowOverride for WordPress directory
+  lineinfile:
+    path: /etc/apache2/sites-available/000-default.conf
+    insertbefore: '</VirtualHost>'
+    line: |
+      <Directory /var/www/html/wordpress>
+        AllowOverride All
+      </Directory>
+  notify: restart apache

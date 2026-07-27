@@ -1,0 +1,52 @@
+---
+# =============================================================================
+# SSH Role
+# =============================================================================
+# Hardens SSH:
+#   - Change port to 2222
+#   - Disable root login
+#   - Restart sshd
+#
+# NOTE: After this role, you must SSH on port 2222!
+# =============================================================================
+
+# --- Backup original sshd_config ---
+- name: Backup original sshd_config
+  copy:
+    src: /etc/ssh/sshd_config
+    dest: /etc/ssh/sshd_config.backup
+    remote_src: yes
+    force: no
+
+# --- Configure SSH ---
+- name: Set SSH port to 2222
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?Port '
+    line: 'Port 2222'
+    state: present
+  notify: restart sshd
+
+- name: Disable root login via SSH
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin no'
+    state: present
+  notify: restart sshd
+
+- name: Enable public key authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PubkeyAuthentication'
+    line: 'PubkeyAuthentication yes'
+    state: present
+  notify: restart sshd
+
+- name: Enable password authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: 'PasswordAuthentication yes'
+    state: present
+  notify: restart sshd

@@ -1,0 +1,152 @@
+---
+# =============================================================================
+# Partition Role
+# =============================================================================
+# Partitions the disk into:
+#   - swap: 4G
+#   - /:    15G
+#   - /home: 5G
+#   - /backup: 6G
+#
+# WARNING: This will DESTROY all data on the target disk!
+# =============================================================================
+
+- name: Display disk info before partitioning
+  debug:
+    msg: "Target disk: {{ disk_device }} — This will be wiped!"
+
+- name: Check if disk exists
+  stat:
+    path: "{{ disk_device }}"
+  register: disk_check
+
+- name: Abort if disk not found
+  fail:
+    msg: "Disk {{ disk_device }} not found! Check your vars/main.yml and run lsblk."
+  when: not disk_check.stat.exists
+
+# --- Unmount existing partitions if mounted ---
+- name: Unmount all partitions on target disk
+  command: "umount {{ item }}"
+  loop:
+    - "{{ disk_device }}2"
+    - "{{ disk_device }}3"
+    - "{{ disk_device }}4"
+    - "{{ disk_device }}5"
+  ignore_errors: yes
+  when: disk_check.stat.exists
+
+# --- Wipe and partition ---
+- name: Create new partition table and partitions
+  shell: |
+    # Wipe existing partition table
+    wipefs -a {{ disk_device }}
+    # Create partitions using parted
+    parted -s {{ disk_device }} mklabel msdos
+    parted -s {{ disk_device }} mkpart primary linux-swap 1MiB {{ swap_size }}
+    parted -s {{ disk_device }} mkpart primary ext4 {{ swap_size }} {{ swap_size }}{{ root_size }}
+    parted -s {{ disk_device }} mkpart primary ext4 {{ swap_size }}{{ root_size }} {{ swap_size }}{{ root_size }}{{ home_size }}
+    parted -s {{ disk_device }} mkpart primary ext4 {{ swap_size }}{{ root_size }}{{ home_size }} 100%
+  args:
+    creates: "{{ disk_device }}1"
+
+# Wait for kernel to re-read partition table
+- name: Wait for kernel to re-read partition table
+  command: "partprobe {{ disk_device }}"
+  changed_when: false
+
+# --- Format partitions ---
+- name: Format swap partition
+  command: "mkswap {{ disk_device }}1"
+  register: mkswap_result
+  changed_when: "'setting up swap space' in mkswap_result.stderr"
+
+- name: Format root partition
+  filesystem:
+    fstype: ext4
+    dev: "{{ disk_device }}2"
+
+- name: Format home partition
+  filesystem:
+    fstype: ext4
+    dev: "{{ disk_device }}3"
+
+- name: Format backup partition
+  filesystem:
+    fstype: ext4
+    dev: "{{ disk_device }}4"
+
+# --- Activate swap ---
+- name: Activate swap
+  command: "swapon {{ disk_device }}1"
+  when: mkswap_result.changed
+
+# --- Create mount points ---
+- name: Create /home mount point
+  file:
+    path: /home
+    state: directory
+    mode: '0755'
+
+- name: Create /backup mount point
+  file:
+    path: /backup
+    state: directory
+    mode: '0755'
+
+# --- Mount partitions ---
+- name: Mount root partition
+  mount:
+    path: /
+    src: "{{ disk_device }}2"
+    fstype: ext4
+    state: mounted
+
+- name: Mount home partition
+  mount:
+    path: /home
+    src: "{{ disk_device }}3"
+    fstype: ext4
+    state: mounted
+
+- name: Mount backup partition
+  mount:
+    path: /backup
+    src: "{{ disk_device }}4"
+    fstype: ext4
+    state: mounted
+
+# --- Update /etc/fstab for persistence ---
+- name: Add swap to fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "{{ disk_device }}1 none swap sw 0 0"
+    state: present
+
+- name: Add root to fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "{{ disk_device }}2 / ext4 errors=remount-ro 0 1"
+    state: present
+
+- name: Add home to fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "{{ disk_device }}3 /home ext4 defaults 0 2"
+    state: present
+
+- name: Add backup to fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "{{ disk_device }}4 /backup ext4 defaults 0 2"
+    state: present
+
+# --- Verify ---
+- name: Verify partitions are mounted
+  command: "df -h"
+  register: df_output
+  changed_when: false
+
+- name: Display partition layout
+  debug:
+    msg: "{{ df_output.stdout_lines }}"

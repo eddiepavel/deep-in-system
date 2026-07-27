@@ -1,0 +1,47 @@
+# =============================================================================
+# deep-in-system — Ansible Variables
+# =============================================================================
+# CHANGE THESE VALUES before running the playbook!
+# =============================================================================
+
+# --- User Configuration ---
+# Your login username (used for hostname format: {username}-host)
+student_username: "edouardos"
+
+# --- SSH Key for luffy user ---
+# Generate on YOUR machine: ssh-keygen -t rsa -b 4096
+# Then paste the PUBLIC KEY content here (the whole key string)
+luffy_ssh_public_key: "ssh-rsa AAAA... your-key-here ... user@machine"
+
+# --- Passwords (CHANGE THESE!) ---
+# Used for: zoro SSH login, nami FTP, MySQL root, WordPress DB user
+zoro_password: "1234"
+nami_password: "1234"
+mysql_root_password: "1234"
+mysql_wordpress_password: "1234"
+
+# --- WordPress Configuration ---
+wordpress_db_name: "wordpress_db"
+wordpress_db_user: "wordpress_user"
+wordpress_admin_user: "admin"
+wordpress_admin_password: "1234"
+wordpress_admin_email: "admin@example.com"
+wordpress_site_title: "Deep in System"
+
+# --- Network ---
+# Static IP for the VM (adjust to your network)
+static_ip: "192.168.1.100"
+netmask: "255.255.255.0"
+gateway: "192.168.1.1"
+dns_server: "8.8.8.8"
+
+# --- Disk Partitioning ---
+# Device to partition (CHECK THIS with `lsblk` before running!)
+# Common: /dev/sda (VirtualBox), /dev/vda (KVM), /dev/nvme0n1 (NVMe)
+disk_device: "/dev/sda"
+
+# Partition sizes
+swap_size: "4G"
+root_size: "15G"
+home_size: "5G"
+backup_size: "6G"

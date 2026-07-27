@@ -1,0 +1,79 @@
+---
+# =============================================================================
+# Users Role
+# =============================================================================
+# Creates two users:
+#   - luffy: SSH key auth, sudoer, home /home/luffy
+#   - zoro:  Password auth, no sudo, home /home/zoro
+#
+# Also sets hostname to {student_username}-host
+# =============================================================================
+
+# --- Set hostname ---
+- name: Set hostname to {{ student_username }}-host
+  hostname:
+    name: "{{ student_username }}-host"
+
+- name: Update /etc/hosts with new hostname
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1\t{{ student_username }}-host"
+    state: present
+
+# --- Create user: luffy ---
+- name: Create user luffy
+  user:
+    name: luffy
+    shell: /bin/bash
+    home: /home/luffy
+    create_home: yes
+    state: present
+
+- name: Add luffy to sudo group
+  user:
+    name: luffy
+    groups: sudo
+    append: yes
+
+# --- SSH key for luffy ---
+- name: Create .ssh directory for luffy
+  file:
+    path: /home/luffy/.ssh
+    state: directory
+    owner: luffy
+    group: luffy
+    mode: '0700'
+
+- name: Deploy SSH public key for luffy
+  authorized_key:
+    user: luffy
+    key: "{{ luffy_ssh_public_key }}"
+    state: present
+
+# --- Create user: zoro ---
+- name: Create user zoro
+  user:
+    name: zoro
+    shell: /bin/bash
+    home: /home/zoro
+    create_home: yes
+    password: "{{ zoro_password | password_hash('sha512') }}"
+    state: present
+
+# --- Verify users ---
+- name: Verify luffy user exists
+  command: "id luffy"
+  register: luffy_check
+  changed_when: false
+
+- name: Verify zoro user exists
+  command: "id zoro"
+  register: zoro_check
+  changed_when: false
+
+- name: Display user info
+  debug:
+    msg:
+      - "luffy: {{ luffy_check.stdout }}"
+      - "zoro: {{ zoro_check.stdout }}"

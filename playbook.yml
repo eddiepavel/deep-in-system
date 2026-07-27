@@ -1,0 +1,50 @@
+---
+# =============================================================================
+# deep-in-system — Main Playbook
+# =============================================================================
+# Usage:
+#   sudo ansible-playbook -i inventory.ini playbook.yml
+#
+# This playbook configures an Ubuntu Server from scratch:
+#   1. Disk partitioning (30GB → swap + / + /home + /backup)
+#   2. User creation (luffy + zoro)
+#   3. SSH hardening (port 2222, no root login)
+#   4. Firewall (UFW)
+#   5. MySQL database
+#   6. WordPress installation
+#   7. FTP server (vsftpd)
+#   8. Automated backups
+# =============================================================================
+
+- name: Configure Ubuntu Server — deep-in-system
+  hosts: vm
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - vars/main.yml
+
+  roles:
+    - role: partition
+      tags: [partition, disk]
+
+    - role: users
+      tags: [users, accounts]
+
+    - role: ssh
+      tags: [ssh, security]
+
+    - role: firewall
+      tags: [firewall, security]
+
+    - role: mysql
+      tags: [mysql, database]
+
+    - role: wordpress
+      tags: [wordpress, web]
+
+    - role: ftp
+      tags: [ftp, services]
+
+    - role: backup
+      tags: [backup, cron]
